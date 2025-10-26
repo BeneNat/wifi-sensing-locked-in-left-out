@@ -1,0 +1,15 @@
+# python
+__pycache__/
+*.pyc
+.env
+# models
+models/*
+!models/README.md
+# python envs
+venv/
+# IDE
+.vscode/
+.idea/
+# platformio/esp
+.pio/
+build/
