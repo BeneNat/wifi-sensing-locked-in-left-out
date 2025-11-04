@@ -1,5 +1,10 @@
-paho-mqtt
 numpy
 pandas
-torch
+scipy
 scikit-learn
+torch
+joblib
+paho-mqtt
+pyserial
+matplotlib
+shap

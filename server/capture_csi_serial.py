@@ -1,121 +1,218 @@
 # server/capture_csi_serial.py
 import serial
-import serial.tools.list_ports
 import threading
 import datetime
 import os
 import signal
 import sys
 import time
+import json
+import numpy as np
+import paho.mqtt.client as mqtt
 
-# -------- CONFIGURATION --------
-# Update COM mapping to match Device Manager output
-PORTS = {
-    "AP": "COM3",   # change to actual AP COM
-    "STA": "COM4"   # change to actual STA COM
-}
-#BAUD_RATE = 115200
-BAUD_RATE = 921600
+# Ensure imports from project root
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from server.serial_parser import parse_csi_line
+from server.live_features import LiveFeatureBuffer
+
 SAVE_DIR = "data_logs"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# How many seconds to wait before reattempt to open a port on failure
-RETRY_OPEN_DELAY = 2.0
+# ------------- SETTINGS -------------
+DESIRED_ROLES = ["AP", "STA"]
+BAUD_RATE = 921600
 
-# -------- STOP EVENT --------
-stop_event = threading.Event()
+# MQTT local broker (adjust IP if not localhost)
+MQTT_BROKER = "192.168.0.100"
+MQTT_PORT = 1883
+
+# Topics
+MQTT_TOPIC_PRED = "csi/prediction"
+MQTT_TOPIC_CONF = "csi/conf"
+MQTT_TOPIC_CMD = "csi/command"
+
+# SNOOZE control
+SNOOZE_FLAG = threading.Event()
+STOP_EVENT = threading.Event()
+# ------------------------------------
 
 def signal_handler(sig, frame):
-    print("\n🛑 Stopping CSI logging...")
-    stop_event.set()
+    print("\n🛑 Stopping...")
+    STOP_EVENT.set()
 
-signal.signal(signal.SIGINT, signal_handler)  # CTRL+C
-signal.signal(signal.SIGTERM, signal_handler) # termination
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
-def available_ports_text():
-    ports = serial.tools.list_ports.comports()
-    return ", ".join([p.device for p in ports])
+# ============ MQTT ============
 
-# -------- FUNCTION TO READ SERIAL --------
-def log_serial(label, port):
+def on_message(client, userdata, msg):
+    """Handle incoming messages (commands)."""
+    try:
+        payload = msg.payload.decode("utf-8").strip().upper()
+        print(f"📩 MQTT message on {msg.topic}: {payload}")
+
+        if payload == "SNOOZE":
+            if not SNOOZE_FLAG.is_set():
+                SNOOZE_FLAG.set()
+                print("😴 SNOOZE command received → pausing predictions for 1 min")
+                threading.Thread(target=snooze_timer, daemon=True).start()
+
+    except Exception as e:
+        print("⚠️ MQTT on_message error:", e)
+
+def snooze_timer():
+    """Handle SNOOZE duration (1 minutes)."""
+    try:
+        time.sleep(60)  # 1 minutes
+    except Exception:
+        pass
+    SNOOZE_FLAG.clear()
+    print("⏰ SNOOZE finished → resuming predictions")
+
+def init_mqtt():
+    try:
+        client = mqtt.Client()
+        client.on_message = on_message
+        client.connect(MQTT_BROKER, MQTT_PORT, 60)
+        client.subscribe(MQTT_TOPIC_CMD)
+        client.loop_start()
+        print(f"📡 MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        return client
+    except Exception as e:
+        print("⚠️ MQTT init failed:", e)
+        return None
+
+MQTT_CLIENT = init_mqtt()
+
+# ============ SERIAL WORKER ============
+
+def log_serial_worker(role, port):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = os.path.join(SAVE_DIR, f"csi_{label}_{timestamp}.csv")
-    print(f"[{label}] Trying to open {port} at {BAUD_RATE} baud. Available ports: {available_ports_text()}")
-    ser = None
+    fname = os.path.join(SAVE_DIR, f"csi_{role}_{timestamp}.csv")
+    print(f"[{role}] opening {port} @ {BAUD_RATE}, logging -> {fname}")
 
-    # Try to open port with retries until stop_event is set
-    while ser is None and not stop_event.is_set():
-        try:
-            ser = serial.Serial(port, BAUD_RATE, timeout=1)
-            print(f"[{label}] Opened {port} -> logging to {filename}")
-        except Exception as e:
-            print(f"[{label}] Could not open {port}: {e}. Retrying in {RETRY_OPEN_DELAY}s")
-            time.sleep(RETRY_OPEN_DELAY)
-
-    if ser is None:
-        print(f"[{label}] Exiting thread because stop_event set before open.")
+    try:
+        ser = serial.Serial(port, BAUD_RATE, timeout=2)
+        ser.reset_input_buffer()
+        ser.reset_output_buffer()
+    except Exception as e:
+        print(f"[{role}] cannot open {port}: {e}")
         return
 
-    # Ensure file is line-buffered and flush on each line
-    with open(filename, "w", buffering=1, encoding="utf-8") as f:
-        # write header for convenience
-        f.write("# timestamp_iso, raw_line\n")
-        f.flush()
-        while not stop_event.is_set():
+    feature_buffer = LiveFeatureBuffer(window_size=60, step=25)
+
+    with open(fname, "w", encoding="utf-8", buffering=1) as fh:
+        fh.write("# iso_ts,raw_line\n")
+        lines = 0
+        parsed = 0
+
+        while not STOP_EVENT.is_set():
             try:
-                raw = ser.readline()  # returns bytes or b'' on timeout
+                raw = ser.readline()
                 if not raw:
                     continue
-                try:
-                    line = raw.decode('utf-8', errors='ignore').strip()
-                except Exception:
-                    line = raw.decode(errors='ignore').strip()
-                if not line:
-                    continue
-                # Only log CSI_DATA lines (but you can log everything)
-                if line.startswith("CSI_DATA"):
-                    ts = datetime.datetime.now().isoformat(timespec="milliseconds")
-                    f.write(f"{ts},{line}\n")
-                    f.flush()
-                    print(f"[{label}] {ts} {line[:120]}")  # print prefix to console
+                lines += 1
+                line = raw.decode('utf-8', errors='ignore').strip()
             except Exception as e:
-                print(f"[{label}] Error while reading/writing: {e}")
-                break
+                print(f"[{role}] decode error: {e}")
+                continue
+
+            # filter out non-CSI lines
+            if "CSI_DATA" not in line:
+                if lines % 500 == 0:
+                    print(f"[{role}] seen {lines} lines, preview: {line[:120]}")
+                continue
+
+            ts = datetime.datetime.now().isoformat(timespec="milliseconds")
+            fh.write(f"{ts},{line}\n")
+
+            parsed_payload = parse_csi_line(line)
+            if not parsed_payload:
+                print(f"[{role}] CSI_DATA but parse failed (line #{lines})")
+                continue
+
+            payload = parsed_payload.get("payload")
+            if payload is None or not isinstance(payload, np.ndarray) or payload.size == 0:
+                print(f"[{role}] parsed but empty payload")
+                continue
+
+            parsed += 1
+            print(f"[{role}] CSI parsed #{parsed} len={payload.size} mean={np.mean(payload):.2f} std={np.std(payload):.2f}")
+
+            feats, pred = feature_buffer.add_sample(payload)
+
+            # Skip predictions if SNOOZE is active
+            if SNOOZE_FLAG.is_set():
+                continue
+
+            if feats is not None and pred:
+                print(f"[{role}] -> FEATS len={len(feats)} pred={pred}")
+
+                if MQTT_CLIENT:
+                    try:
+                        MQTT_CLIENT.publish(
+                            MQTT_TOPIC_PRED,
+                            int(pred["pred"])
+                            #json.dumps({
+                            #    "source": role,
+                            #    "timestamp": ts,
+                            #    "prediction": int(pred["pred"]),
+                            #})
+                        )
+                        MQTT_CLIENT.publish(
+                            MQTT_TOPIC_CONF,
+                            round(float(pred["conf"])*100, 2)
+                            #json.dumps({
+                            #    "source": role,
+                            #    "timestamp": ts,
+                            #    "confidence": float(pred["conf"]),
+                            #})
+                        )
+                    except Exception as e:
+                        print(f"[{role}] mqtt pub failed: {e}")
 
     try:
         ser.close()
     except Exception:
         pass
-    print(f"[{label}] Thread exiting, file saved: {filename}")
+    print(f"[{role}] closed, file saved: {fname}")
 
-# -------- START THREADS --------
+# ============ MAIN CONTROL ============
+
 def start_capture():
-    threads = []
-    for label, port in PORTS.items():
-        t = threading.Thread(target=log_serial, args=(label, port), daemon=False)
-        t.start()
-        threads.append(t)
+    mapping = {
+        "AP": "COM3",  # adjust to your setup
+        "STA": "COM4",
+    }
 
-    print("🟢 CSI logging started for ports:", PORTS)
-    print("Press Ctrl+C to stop logging and close files.")
+    print("Role -> port mapping:", mapping)
+
+    threads = []
+    for role in ["AP", "STA"]:
+        if mapping.get(role):
+            t = threading.Thread(target=log_serial_worker, args=(role, mapping[role]), daemon=False)
+            t.start()
+            threads.append(t)
+        else:
+            print(f"[WARN] No port assigned for role {role}")
 
     try:
-        # Wait for stop_event set by signal handler
-        while not stop_event.is_set():
+        while not STOP_EVENT.is_set():
             time.sleep(0.5)
     except KeyboardInterrupt:
-        stop_event.set()
+        STOP_EVENT.set()
 
-    # wait for all threads to finish
     for t in threads:
-        t.join(timeout=5.0)
+        t.join(timeout=2.0)
 
-    print("✅ All threads stopped. CSV files saved in:", SAVE_DIR)
+    if MQTT_CLIENT:
+        try:
+            MQTT_CLIENT.loop_stop()
+            MQTT_CLIENT.disconnect()
+        except Exception:
+            pass
+
+    print("Capture stopped.")
 
 if __name__ == "__main__":
-    # quick sanity: make sure pyserial is the right package
-    if getattr(serial, 'Serial', None) is None:
-        print("ERROR: pyserial not found or shadowed. Make sure 'pyserial' is installed and there's no local file named 'serial.py'.")
-        sys.exit(1)
-
     start_capture()

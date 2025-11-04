@@ -1,0 +1,40 @@
+{
+  "active_model": "model_tinyml_mlp.pth",
+  "models": {
+    "model_tinyml_mlp.pth": {
+      "type": "mlp",
+      "description": "TinyML-optimized MLP for microcontroller deployment",
+      "test_accuracy": 82.51,
+      "input_features": 28,
+      "output_classes": 2
+    },
+    "model_tinyml_mlp_quantized.pth": {
+      "type": "mlp_quantized",
+      "description": "Quantized TinyML MLP for microcontroller deployment (smaller, faster)",
+      "test_accuracy": 82.35,
+      "input_features": 28,
+      "output_classes": 2
+    },
+    "model_deep_mlp.pth": {
+      "type": "mlp",
+      "description": "Deep MLP reference model (more layers, higher accuracy)",
+      "test_accuracy": 86.80,
+      "input_features": 28,
+      "output_classes": 2
+    },
+    "model_small_mlp.pth": {
+      "type": "mlp",
+      "description": "Small MLP model for quick tests",
+      "test_accuracy": 76.47,
+      "input_features": 28,
+      "output_classes": 2
+    },
+    "model_rf.joblib": {
+      "type": "rf",
+      "description": "Random Forest baseline model",
+      "test_accuracy": 74.4,
+      "input_features": 28,
+      "output_classes": 2
+    }
+  }
+}
