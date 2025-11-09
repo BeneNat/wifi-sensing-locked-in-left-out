@@ -1,17 +1,14 @@
-# tutorial_1_5_parse_robust.py
 import re
 import os
 
 DATA_DIR = "data_utf8"
 
 def safe_parse_int_list(s):
-    """Parse list of ints safely; skip malformed tokens."""
     values = []
     for token in s.split():
         token = token.strip()
         if not token:
             continue
-        # accept only tokens like -12, 45, 0
         if re.match(r"^-?\d+$", token):
             try:
                 values.append(int(token))
@@ -30,13 +27,12 @@ def parse_csi_from_file(file_path):
             if not match:
                 continue
             nums = safe_parse_int_list(match.group(1))
-            # Skip if empty or obviously broken
             if len(nums) < 10:
                 continue
             samples.append(nums)
     return samples
 
-# ---- main test ----
+# MAIN test
 for fname in os.listdir(DATA_DIR):
     if not fname.endswith(".csv"):
         continue
@@ -44,8 +40,8 @@ for fname in os.listdir(DATA_DIR):
     try:
         samples = parse_csi_from_file(path)
         if not samples:
-            print(f"⚠️  {fname}: No valid CSI samples found")
+            print(f"[WARNING]   {fname}: No valid CSI samples found")
         else:
-            print(f"✅ {fname}: Parsed {len(samples)} CSI packets, first shape: {len(samples[0])}")
+            print(f"[GOOD] {fname}: Parsed {len(samples)} CSI packets, first shape: {len(samples[0])}")
     except Exception as e:
-        print(f"❌ {fname}: Error {e}")
+        print(f"[ERROR] {fname}: Error {e}")

@@ -1,4 +1,3 @@
-# server/live_features.py
 import os
 import json
 import numpy as np
@@ -7,8 +6,6 @@ from joblib import load as joblib_load
 from analysis.features import extract_features_from_window
 
 class LiveFeatureBuffer:
-    """ Maintains a rolling window of CSI payloads and outputs feature vectors. """
-
     def __init__(self, window_size=60, step=25, n_subcarriers=None):
         self.window_size = window_size
         self.step = step
@@ -16,7 +13,6 @@ class LiveFeatureBuffer:
         self.n_sub = n_subcarriers
         self.model, self.model_info = self._load_active_model()
 
-    # ----------------------------------------------------------------------
     def _load_active_model(self):
         meta_path = os.path.join("models", "model_metadata.json")
         if not os.path.exists(meta_path):
@@ -33,26 +29,25 @@ class LiveFeatureBuffer:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found: {model_path}")
 
-        print(f"🧩 Loading model: {active_name} ({model_info['type']})")
+        print(f"[MODEL] Loading model: {active_name} ({model_info['type']})")
 
         model_type = model_info["type"]
         if model_type == "rf":
             model = joblib_load(model_path)
-            print("✅ Loaded RandomForest model")
+            print("[MODEL] Loaded RandomForest model")
         elif "mlp" in model_type:
             try:
                 model = torch.jit.load(model_path, map_location="cpu")
-                print("✅ Loaded TorchScript / quantized model (torch.jit.load)")
+                print("[MODEL] Loaded TorchScript / quantized model (torch.jit.load)")
             except Exception as e:
-                print("⚠️ torch.jit.load failed:", e)
+                print("[ERROR] torch.jit.load failed:", e)
                 model = torch.load(model_path, map_location="cpu", weights_only=False)
-                print("✅ Loaded fallback PyTorch model (torch.load)")
+                print("[MODEL] Loaded fallback PyTorch model (torch.load)")
             model.eval()
         else:
             raise ValueError(f"Unknown model type: {model_type}")
         return model, model_info
 
-    # ----------------------------------------------------------------------
     def add_sample(self, payload):
         if not isinstance(payload, np.ndarray):
             payload = np.array(payload, dtype=np.float32)
@@ -71,13 +66,13 @@ class LiveFeatureBuffer:
             window = np.stack(self.buffer[-self.window_size:], axis=0)
             feats = extract_features_from_window(window)
             if np.std(window) < 1e-3:
-                print("[WARN] CSI window nearly constant! Check STA/AP data stream.")
+                print("[WARNING] CSI window nearly constant! Check STA/AP data stream.")
 
-            # Normalize before inference (TEMP SCALING TEST)
+            # Normalize before inference
             feats = np.nan_to_num(feats)
 
-            # 🔧 quick runtime scaling to match training scale
-            feats = feats / 1e6  # try 1e5 first; if still huge, try 1e6 later
+            # quick runtime scaling to match training scale
+            feats = feats / 1e6  # try 1e4, 1e5, 1e6
 
             # Skip local normalization for now
             # feats_mean = np.mean(feats)
@@ -90,7 +85,6 @@ class LiveFeatureBuffer:
             return feats, pred
         return None, None
 
-    # ----------------------------------------------------------------------
     def _predict(self, features):
         model_type = self.model_info["type"]
         try:
@@ -139,5 +133,5 @@ class LiveFeatureBuffer:
             else:
                 return {"pred": None, "conf": None}
         except Exception as e:
-            print(f"⚠️ Prediction error: {e}")
+            print(f"[ERROR] Prediction error: {e}")
             return {"pred": None, "conf": None}

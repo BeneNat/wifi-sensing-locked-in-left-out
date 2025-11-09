@@ -46,8 +46,8 @@ def extract_features_from_window(window):
 
 
 def preprocess_csi(samples, window_size=50, step=25):
-    """Offline batch preprocessing: from list of packets (each 1D array) -> feature vectors"""
     from collections import Counter
+    
     lengths = [len(s) for s in samples]
     if len(set(lengths)) > 1:
         most_common_len = Counter(lengths).most_common(1)[0][0]

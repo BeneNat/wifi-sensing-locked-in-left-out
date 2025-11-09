@@ -1,7 +1,7 @@
 import os
 
-input_dir = "data_raw"
-output_dir = "data_utf8"
+input_dir = "data_raw"  # Folder for captured training csv
+output_dir = "data_utf8"    # Output folder qith fixed encoding
 os.makedirs(output_dir, exist_ok=True)
 
 for fname in os.listdir(input_dir):

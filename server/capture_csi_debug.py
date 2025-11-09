@@ -1,5 +1,4 @@
-# server/capture_csi_debug.py
-# Debug capture + live inference. Use this instead of capture_csi_serial while debugging.
+# Debug capture + live inference.
 import serial
 import serial.tools.list_ports
 import threading
@@ -17,8 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from server.serial_parser import parse_csi_line
 from server.live_features import LiveFeatureBuffer
 
-# ---------- CONFIG ----------
-# If you want to swap ports quickly, change these
+# CONFIG
 PORTS = {
     "AP": "COM3",
     "STA": "COM4",
@@ -27,7 +25,7 @@ BAUD_RATE = 921600
 SAVE_DIR = "data_logs"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# quick overrides (change to test)
+# quick overrides
 WINDOW_SIZE = 200    # smaller to get faster feedback
 STEP = 15
 
@@ -38,29 +36,29 @@ MQTT_TOPIC_PRED = "csi/prediction"
 
 RETRY_OPEN_DELAY = 1.5
 
-# ---------- global control ----------
+# global control
 stop_event = threading.Event()
 def signal_handler(sig, frame):
-    print("\n🛑 stop signal received")
+    print("\nStop signal received")
     stop_event.set()
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# ---------- MQTT ----------
+# MQTT
 def init_mqtt():
     try:
         client = mqtt.Client()
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.loop_start()
-        print(f"📡 MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"[MQTT] MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
         return client
     except Exception as e:
-        print(f"⚠️ MQTT init failed: {e}")
+        print(f"[WARNING] MQTT init failed: {e}")
         return None
 
 mqtt_client = init_mqtt()
 
-# ---------- helper ----------
+# helper
 def list_ports_print():
     ports = list(serial.tools.list_ports.comports())
     print("Detected serial ports:")
@@ -68,7 +66,7 @@ def list_ports_print():
         print(f" - {p.device} : {p.description}")
     return ports
 
-# ---------- worker ----------
+# worker
 def log_serial_debug(label, port):
     # counters & stats
     total_lines = 0
@@ -120,8 +118,6 @@ def log_serial_debug(label, port):
                 if total_lines % 50 == 0:
                     print(f"[{label}] lines read: {total_lines}")
 
-                # If the device sometimes prints raw payload chunks (not full CSI_DATA),
-                # detect that and print short debug lines.
                 # Only process lines containing CSI_DATA
                 if "CSI_DATA" not in line:
                     # print very short preview occasionally
@@ -167,7 +163,7 @@ def log_serial_debug(label, port):
                     # show model raw output (live_features prints debug already)
                     print(f"[{label}] -> PRED: {pred}")
 
-                    # publish MQTT as well
+                    # publish MQTT
                     if mqtt_client:
                         try:
                             mqtt_client.publish(MQTT_TOPIC_PRED, json.dumps({
@@ -190,7 +186,7 @@ def log_serial_debug(label, port):
 
     print(f"[{label}] finished: total_lines={total_lines} csi_lines={total_csi_lines} parsed={total_parsed} last_payload_len={last_payload_len}")
 
-# ---------- run ----------
+# run
 if __name__ == "__main__":
     print("Starting debug capture")
     list_ports_print()

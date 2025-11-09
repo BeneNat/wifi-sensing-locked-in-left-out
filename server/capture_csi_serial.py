@@ -1,4 +1,3 @@
-# server/capture_csi_serial.py
 import serial
 import threading
 import datetime
@@ -18,56 +17,79 @@ from server.live_features import LiveFeatureBuffer
 SAVE_DIR = "data_logs"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# ------------- SETTINGS -------------
+# SETTINGS
 DESIRED_ROLES = ["AP", "STA"]
 BAUD_RATE = 921600
 
-# MQTT local broker (adjust IP if not localhost)
-MQTT_BROKER = "192.168.0.100"
+# MQTT local broker
+MQTT_BROKER = "192.168.1.107"
 MQTT_PORT = 1883
 
 # Topics
 MQTT_TOPIC_PRED = "csi/prediction"
 MQTT_TOPIC_CONF = "csi/conf"
 MQTT_TOPIC_CMD = "csi/command"
+MQTT_TOPIC_ACK = "csi/confirmation"
+MQTT_TOPIC_TEMP = "esp32/bme680_temp"
+
+# Temperature thresholds (°C)
+SAFE_TEMP_MIN = 0.0
+SAFE_TEMP_MAX = 30.0
+CURRENT_TEMP = None
 
 # SNOOZE control
 SNOOZE_FLAG = threading.Event()
 STOP_EVENT = threading.Event()
-# ------------------------------------
 
 def signal_handler(sig, frame):
-    print("\n🛑 Stopping...")
+    print("\nStopping...")
     STOP_EVENT.set()
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
-# ============ MQTT ============
-
+# MQTT
 def on_message(client, userdata, msg):
-    """Handle incoming messages (commands)."""
+    global CURRENT_TEMP
+
     try:
         payload = msg.payload.decode("utf-8").strip().upper()
-        print(f"📩 MQTT message on {msg.topic}: {payload}")
+        topic = msg.topic
+        print(f"[MQTT] MQTT message on {topic}: {payload}")
 
-        if payload == "SNOOZE":
+        # Handle SNOOZE command
+        if topic == MQTT_TOPIC_CMD and payload == "SNOOZE":
             if not SNOOZE_FLAG.is_set():
                 SNOOZE_FLAG.set()
-                print("😴 SNOOZE command received → pausing predictions for 1 min")
-                threading.Thread(target=snooze_timer, daemon=True).start()
+                print("[MQTT] SNOOZE command received -> pausing predictions for 1 min")
+                threading.Thread(target=snooze_timer, args=(60,), daemon=True).start()
+
+        # Handle ACK confirmation
+        elif topic == MQTT_TOPIC_ACK and payload == "ACK":
+            if not SNOOZE_FLAG.is_set():
+                SNOOZE_FLAG.set()
+                print("[MQTT] ACK received -> pausing predictions for 5 minutes")
+                threading.Thread(target=snooze_timer, args=(300,), daemon=True).start()
+
+        # Handle temperature updates
+        elif topic == MQTT_TOPIC_TEMP:
+            try:
+                CURRENT_TEMP = float(payload)
+                print(f"[MQTT] Updated temperature: {CURRENT_TEMP:.2f} °C")
+            except ValueError:
+                print(f"[MQTT] Invalid temperature payload: {payload}")
 
     except Exception as e:
-        print("⚠️ MQTT on_message error:", e)
+        print("[MQTT] MQTT on_message error:", e)
 
-def snooze_timer():
-    """Handle SNOOZE duration (1 minutes)."""
+
+def snooze_timer(duration_seconds):
     try:
-        time.sleep(60)  # 1 minutes
+        time.sleep(duration_seconds)
     except Exception:
         pass
     SNOOZE_FLAG.clear()
-    print("⏰ SNOOZE finished → resuming predictions")
+    print(f"[MQTT] Pause finished ({duration_seconds/60:.1f} min) -> resuming predictions")
 
 def init_mqtt():
     try:
@@ -75,16 +97,18 @@ def init_mqtt():
         client.on_message = on_message
         client.connect(MQTT_BROKER, MQTT_PORT, 60)
         client.subscribe(MQTT_TOPIC_CMD)
+        client.subscribe(MQTT_TOPIC_ACK)
+        client.subscribe(MQTT_TOPIC_TEMP)
         client.loop_start()
-        print(f"📡 MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
+        print(f"[MQTT] MQTT connected to {MQTT_BROKER}:{MQTT_PORT}")
         return client
     except Exception as e:
-        print("⚠️ MQTT init failed:", e)
+        print("[MQTT] MQTT init failed:", e)
         return None
 
 MQTT_CLIENT = init_mqtt()
 
-# ============ SERIAL WORKER ============
+# SERIAL WORKER
 
 def log_serial_worker(role, port):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -150,24 +174,24 @@ def log_serial_worker(role, port):
 
                 if MQTT_CLIENT:
                     try:
-                        MQTT_CLIENT.publish(
-                            MQTT_TOPIC_PRED,
-                            int(pred["pred"])
-                            #json.dumps({
-                            #    "source": role,
-                            #    "timestamp": ts,
-                            #    "prediction": int(pred["pred"]),
-                            #})
-                        )
-                        MQTT_CLIENT.publish(
-                            MQTT_TOPIC_CONF,
-                            round(float(pred["conf"])*100, 2)
-                            #json.dumps({
-                            #    "source": role,
-                            #    "timestamp": ts,
-                            #    "confidence": float(pred["conf"]),
-                            #})
-                        )
+                        raw_pred = int(pred["pred"])
+                        # Determine output value based on temperature and movement
+                        if raw_pred == 0:
+                            final_pred = 0  # clear
+                        else:
+                            if CURRENT_TEMP is None:
+                                # If temperature not yet received, assume safe temporarily
+                                final_pred = 1
+                            elif SAFE_TEMP_MIN <= CURRENT_TEMP <= SAFE_TEMP_MAX:
+                                final_pred = 1  # medium alert
+                            else:
+                                final_pred = 2  # high alert (presence + unsafe temperature)
+
+                        MQTT_CLIENT.publish(MQTT_TOPIC_PRED, final_pred)
+                        MQTT_CLIENT.publish(MQTT_TOPIC_CONF, round(float(pred["conf"]) * 100, 2))
+
+                        print(f"[{role}] MQTT publish: pred={final_pred}, temp={CURRENT_TEMP}, conf={pred['conf']:.2f}")
+
                     except Exception as e:
                         print(f"[{role}] mqtt pub failed: {e}")
 
@@ -177,11 +201,10 @@ def log_serial_worker(role, port):
         pass
     print(f"[{role}] closed, file saved: {fname}")
 
-# ============ MAIN CONTROL ============
-
+# MAIN CONTROL
 def start_capture():
     mapping = {
-        "AP": "COM3",  # adjust to your setup
+        "AP": "COM3",
         "STA": "COM4",
     }
 
@@ -194,7 +217,7 @@ def start_capture():
             t.start()
             threads.append(t)
         else:
-            print(f"[WARN] No port assigned for role {role}")
+            print(f"[WARNING] No port assigned for role {role}")
 
     try:
         while not STOP_EVENT.is_set():

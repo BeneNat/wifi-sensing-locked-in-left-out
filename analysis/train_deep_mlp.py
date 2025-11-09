@@ -16,7 +16,7 @@ df = pd.read_csv("data_features/csi_features_clean.csv")
 X = df.drop("label", axis=1).values
 y = df["label"].values
 
-# Split train/test (if not already split)
+# Split train/test
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
@@ -102,12 +102,10 @@ for epoch in range(epochs):
     else:
         counter += 1
         if counter >= patience:
-            print("⏹️ Early stopping triggered.")
+            print("Early stopping triggered.")
             break
 
-# =====================
 # Evaluation
-# =====================
 model.load_state_dict(best_model_state)
 model.eval()
 with torch.no_grad():
@@ -115,21 +113,12 @@ with torch.no_grad():
     y_pred_labels = (y_pred >= 0.5).int().numpy()
 
 acc = accuracy_score(y_test, y_pred_labels)
-print(f"\n✅ Test Accuracy: {acc*100:.2f}%")
-print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
-
-model.eval()
-with torch.no_grad():
-    y_pred = model(X_test_tensor)
-    y_pred_labels = (y_pred >= 0.5).int().numpy()
-
-acc = accuracy_score(y_test, y_pred_labels)
-print(f"Test Accuracy: {acc*100:.2f}%")
+print(f"\nTest Accuracy: {acc*100:.2f}%")
 print("\nClassification Report:\n", classification_report(y_test, y_pred_labels))
 
 os.makedirs("models", exist_ok=True)
 torch.save(model.state_dict(), "models/model_deep_mlp.pth")
-print("✅ Model saved to models/model_deep_mlp.pth")
+print("Model saved to models/model_deep_mlp.pth")
 
 cm = confusion_matrix(y_test, y_pred_labels)
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["No person", "Person"])

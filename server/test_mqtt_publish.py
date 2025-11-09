@@ -1,4 +1,3 @@
-# server/test_mqtt_publish.py
 import json
 import time
 import paho.mqtt.client as mqtt
@@ -9,7 +8,7 @@ MQTT_TOPIC_PRED = "csi/prediction"
 
 client = mqtt.Client()
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
-print("📡 Connected to MQTT broker.")
+print("[MQTT] Connected to MQTT broker.")
 
 for i in range(3):
     msg = json.dumps({
@@ -19,7 +18,7 @@ for i in range(3):
         "confidence": 0.9
     })
     client.publish(MQTT_TOPIC_PRED, msg)
-    print(f"➡️ Published test message {i}")
+    print(f"[MQTT] Published test message {i}")
     time.sleep(1)
 
 client.disconnect()

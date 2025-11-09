@@ -1,7 +1,7 @@
 import paho.mqtt.client as mqtt
 import json
 
-# --- Configuration ---
+# Configuration
 broker = "192.168.1.107"    # MQTT broker address
 port = 1883
 topics_to_subscribe = [
@@ -15,7 +15,7 @@ topics_to_subscribe = [
     "esp32/#"
 ]
 
-# --- MQTT Callbacks ---
+# MQTT Callbacks
 def on_connect(client, userdata, flags, reasonCode, properties):
     if reasonCode == 0:
         print("[MQTT] Connected to MQTT Broker successfully!")
@@ -45,21 +45,21 @@ def on_message(client, userdata, msg):
         print(f"------------------------")
 
     except Exception as e:
-        print(f"Error processing message on topic {msg.topic}: {e}")
+        print(f"[ERROR] Error processing message on topic {msg.topic}: {e}")
 
 
-# --- Main Execution ---
+# Main
 client = mqtt.Client(client_id="Subscriber_AllTopics", callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 
 client.on_connect = on_connect
 client.on_message = on_message
 
-print(f"Attempting to connect to broker at {broker}:{port}...")
+print(f"[MQTT] Attempting to connect to broker at {broker}:{port}...")
 
 try:
     client.connect(broker, port, 60)
 except Exception as e:
-    print(f"Connection error: {e}")
+    print(f"[ERROR] Connection error: {e}")
     exit()
 
 print("\n--- Awaiting Messages ---")
