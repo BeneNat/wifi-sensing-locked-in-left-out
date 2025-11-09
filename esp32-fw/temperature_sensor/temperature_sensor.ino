@@ -9,8 +9,8 @@
 #define LED_BUILTIN 2
 #endif
 
-const char* ssid = "BeskidMedia_510a";  // WiFi SSID
-const char* password = "UKFTcLcV";  // WiFi Password
+const char* ssid = "SSID";  // WiFi SSID
+const char* password = "PASSWORD";  // WiFi Password
 const char* mqtt_server = "192.168.1.107";  // MQTT broker address
 const char* mqtt_topic_full = "esp32/bme680_full";
 const char* mqtt_topic_temp = "esp32/bme680_temp";
