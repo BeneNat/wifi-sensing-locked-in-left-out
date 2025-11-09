@@ -1,4 +1,4 @@
-# wifi-sensing-left-alive
+# wifi-sensing-locked-in-left-out
 Detecting the Presence of Living Beings Left in Cars Using Wi-Fi Channel Sensing.
 
 Proof-of-concept pipeline:
