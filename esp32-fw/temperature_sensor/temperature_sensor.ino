@@ -50,13 +50,13 @@ void reconnect() {
   }
 }
 
-// Simple function for converting resistance to “IAQ” 0–50
+// Simple function for converting resistance to “IAQ” 0–500
 float calculateIAQ(float gas_kohm) {
-  if (gas_kohm > 50) return 5;        // very good air
-  else if (gas_kohm > 10) return 15;  // good
-  else if (gas_kohm > 5) return 25;   // moderate
-  else if (gas_kohm > 1) return 35;   // bad
-  else return 45;                     // very bad
+  if (gas_kohm > 50) return 50;        // very good air
+  else if (gas_kohm > 10) return 150;  // good
+  else if (gas_kohm > 5) return 250;   // moderate
+  else if (gas_kohm > 1) return 350;   // bad
+  else return 450;                     // very bad
 }
 
 void setup() {
