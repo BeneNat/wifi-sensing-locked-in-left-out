@@ -7,9 +7,12 @@ This repository contains the source code and documentation for an engineering pr
 
 The LILO system is a non-invasive, device-free sensing solution that monitors the vehicle cabin environment without compromising privacy. It consists of three main segments: the data acquisition layer (ESP32), the edge-processing server (TinyML), and the user notification layer (MQTT & Mobile App).
 
-![System Architecture](assets/SystemArchitecture.png)
-
-*Figure 1: High-level overview of the LILO system architecture.*
+<p align="center">
+  <img src="assets/SystemArchitecture.png" alt="System Architecture" width="600">
+</p>
+<p align="center">
+  <em>Figure 1: High-level overview of the LILO system architecture.</em>
+</p>
 
 ## Key Features
 
