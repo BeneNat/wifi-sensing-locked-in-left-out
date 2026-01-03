@@ -49,4 +49,4 @@ The LILO system is a non-invasive, device-free sensing solution that monitors th
 This software is distributed under the **MIT License**. Refer to the [LICENSE](LICENSE) file for the full text.
 
 ---
-© 2026 Filip Żurek - AGH University of Krakow. All rights reserved.
+*© 2026 Filip Żurek - AGH University of Krakow. All rights reserved.*
