@@ -37,6 +37,13 @@ The LILO system is a non-invasive, device-free sensing solution that monitors th
 * **Machine Learning:** PyTorch (Model development), TinyML (Optimization), Quantization (INT8).
 * **Languages:** C++, Python, G (MIT App Inventor).
 
+## Acknowledgements
+
+This project was built upon the existing research and tools within the open-source community. Special thanks to:
+
+* **[ESP32-WiFi-Sensing](https://github.com/thu4n/ESP32-WiFi-Sensing)** by *thu4n* – for the inspiration regarding the system's methodology and conceptual design.
+* **[ESP32-CSI-Tool](https://github.com/StevenMHernandez/ESP32-CSI-Tool)** by *Steven M. Hernandez* – for providing the essential framework and tools for CSI data acquisition on ESP32.
+
 ## Author and Context
 
 * **Author:** Filip Żurek
