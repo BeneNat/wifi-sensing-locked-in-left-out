@@ -56,7 +56,7 @@ This project was built upon the existing research and tools within the open-sour
 
 ## License
 
-This software is distributed under the **MIT License**. Refer to the [LICENSE](LICENSE) file for the full text.
+This software is provided solely for **non-commercial academic research, education, and verification of published results**. Commercial use, redistribution, or integration into commercial products is prohibited without prior written permission. Parts of the implemented system and methods are the subject of a pending patent application, and no patent license is granted. Third-party components (including code derived from `ESP32-CSI-Tool`) remain subject to their respective original licenses. Refer to the [LICENSE](LICENSE) file for the full text.
 
 ---
 *© 2026 Filip Żurek - AGH University of Krakow. All rights reserved.*
